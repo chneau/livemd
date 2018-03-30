@@ -14,39 +14,40 @@ import (
 
 	"github.com/rjeczalik/notify"
 	"github.com/russross/blackfriday"
+	openlink "github.com/skratchdot/open-golang/open"
 	"golang.org/x/net/websocket"
 )
 
-var SUFFIXES = [3]string{".md", ".mkd", ".markdown"}
+var suffixes = [3]string{".md", ".mkd", ".markdown"}
 
 var toc []string
 var tocMutex sync.Mutex
 var rootTmpl *template.Template
 var pageTmpl *template.Template
-var path string
 
 type state int
 
-var host = flag.String("host", "", "Host IP to listen on (default: \"\" == 127.0.0.1)")
-var port = flag.String("port", "8080", "Port to listen on (default: 8080)")
+var host = flag.String("host", "127.0.0.1", "Host IP to listen on")
+var port = flag.String("port", "8080", "Port to listen on")
+var path = flag.String("path", ".", "Directory to watch")
 
 const (
-	None state = iota
-	Open
-	Close
+	none state = iota
+	open
+	close
 )
 
-type Listener struct {
+type listener struct {
 	File   string
 	Socket *websocket.Conn
 	State  state
 }
 
-type Update struct {
+type update struct {
 	File string
 }
 
-type BrowserMsg struct {
+type browserMsg struct {
 	Markdown string
 }
 
@@ -62,8 +63,8 @@ func init() {
 	}
 }
 
-func HasMarkdownSuffix(s string) bool {
-	for _, suffix := range SUFFIXES {
+func hasMarkdownSuffix(s string) bool {
+	for _, suffix := range suffixes {
 		if strings.HasSuffix(strings.ToLower(s), suffix) {
 			return true
 		}
@@ -71,7 +72,7 @@ func HasMarkdownSuffix(s string) bool {
 	return false
 }
 
-func AddWatch(c chan notify.EventInfo) filepath.WalkFunc {
+func addWatch(c chan notify.EventInfo) filepath.WalkFunc {
 	return func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
 			err = notify.Watch(path, c, notify.Write)
@@ -79,7 +80,7 @@ func AddWatch(c chan notify.EventInfo) filepath.WalkFunc {
 				fmt.Println("err", err)
 				return err
 			}
-		} else if HasMarkdownSuffix(path) {
+		} else if hasMarkdownSuffix(path) {
 			tocMutex.Lock()
 			toc = append(toc, path)
 			tocMutex.Unlock()
@@ -94,7 +95,7 @@ func AddWatch(c chan notify.EventInfo) filepath.WalkFunc {
 	}
 }
 
-func writeFileForListener(l Listener) {
+func writeFileForListener(l listener) {
 	var data []byte
 	file, err := os.Open(l.File)
 	if err != nil {
@@ -105,7 +106,7 @@ func writeFileForListener(l Listener) {
 		data = []byte("Error: " + err.Error())
 	}
 	data = blackfriday.MarkdownCommon(filebytes)
-	var msg BrowserMsg
+	var msg browserMsg
 	msg.Markdown = string(data)
 	err = websocket.JSON.Send(l.Socket, msg)
 	if err != nil {
@@ -113,19 +114,19 @@ func writeFileForListener(l Listener) {
 	}
 }
 
-func UpdateListeners(updates chan notify.EventInfo, listeners chan Listener) {
-	currentListeners := make([]Listener, 0)
+func updateListeners(updates chan notify.EventInfo, listeners chan listener) {
+	currentListeners := make([]listener, 0)
 	for {
 		select {
 		case listener := <-listeners:
-			if listener.State == Open {
+			if listener.State == open {
 				dir, _ := os.Getwd()
 				listener.File = filepath.Join(dir, listener.File)
 				log.Println("New listener on", listener.File)
 				currentListeners = append(currentListeners, listener)
 				writeFileForListener(listener)
 			}
-			if listener.State == Close {
+			if listener.State == close {
 				for i, l := range currentListeners {
 					if l.Socket == listener.Socket {
 						log.Println("Deregistering Listener")
@@ -144,13 +145,13 @@ func UpdateListeners(updates chan notify.EventInfo, listeners chan Listener) {
 	}
 }
 
-func RootFunc(w http.ResponseWriter, r *http.Request) {
+func rootFunc(w http.ResponseWriter, r *http.Request) {
 	tocMutex.Lock()
 	localToc := make([]string, len(toc))
 	copy(localToc, toc)
 	tocMutex.Unlock()
 	for i, s := range localToc {
-		chop := strings.TrimPrefix(s, path)
+		chop := strings.TrimPrefix(s, *path)
 		localToc[i] = "* [" + chop + "](/md" + chop + ")"
 	}
 	tocMkd := strings.Join(localToc, "\n")
@@ -158,52 +159,48 @@ func RootFunc(w http.ResponseWriter, r *http.Request) {
 	rootTmpl.Execute(w, string(bytes))
 }
 
-func CSSFunc(css string) http.HandlerFunc {
+func cssFunc(css string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(css))
 	}
 }
 
-func PageFunc(w http.ResponseWriter, r *http.Request) {
+func pageFunc(w http.ResponseWriter, r *http.Request) {
 	subpath := strings.TrimPrefix(r.RequestURI, "/md")
 	log.Println("New watcher on ", subpath)
 	pageTmpl.Execute(w, subpath)
 }
 
-func HandleListener(listeners chan Listener) func(ws *websocket.Conn) {
+func handleListener(listeners chan listener) func(ws *websocket.Conn) {
 	return func(ws *websocket.Conn) {
 		subpath := strings.TrimPrefix(ws.Request().RequestURI, "/ws")
-		listeners <- Listener{subpath, ws, Open}
+		listeners <- listener{subpath, ws, open}
 		var closeMessage string
 		err := websocket.Message.Receive(ws, &closeMessage)
 		if err != nil && err.Error() != "EOF" {
 			log.Println("Error before close:", err)
 		}
-		listeners <- Listener{subpath, ws, Close}
+		listeners <- listener{subpath, ws, close}
 	}
 }
 
 func main() {
 	flag.Parse()
-	path = os.Getenv("PWD")
-	if len(flag.Args()) > 1 {
-		path = flag.Arg(1)
-	}
-
+	addr := fmt.Sprintf("%s:%s", *host, *port)
+	fulladdr := fmt.Sprintf("http://%s", addr)
 	updates := make(chan notify.EventInfo)
-
-	log.Println("Watching directory", path)
-	err := filepath.Walk(path, AddWatch(updates))
+	log.Println("Serving on", fulladdr)
+	log.Println("Watching directory", *path)
+	err := filepath.Walk(*path, addWatch(updates))
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	listeners := make(chan Listener)
-	go UpdateListeners(updates, listeners)
-
-	http.HandleFunc("/", RootFunc)
-	http.HandleFunc("/md/", PageFunc)
-	http.HandleFunc("/github.css", CSSFunc(githubCss))
-	http.Handle("/ws/", websocket.Handler(HandleListener(listeners)))
-	http.ListenAndServe(fmt.Sprintf("%s:%s", *host, *port), nil)
+	listeners := make(chan listener)
+	go updateListeners(updates, listeners)
+	http.HandleFunc("/", rootFunc)
+	http.HandleFunc("/md/", pageFunc)
+	http.HandleFunc("/github.css", cssFunc(githubCSS))
+	http.Handle("/ws/", websocket.Handler(handleListener(listeners)))
+	openlink.Start(fulladdr)
+	http.ListenAndServe(addr, nil)
 }
