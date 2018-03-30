@@ -121,14 +121,14 @@ func updateListeners(updates chan notify.EventInfo, listeners chan listener) {
 		case listener := <-listeners:
 			if listener.State == open {
 				listener.File = filepath.Join(listener.File)
-				log.Println("New listener on", listener.File)
+				// log.Println("New listener on", listener.File)
 				currentListeners = append(currentListeners, listener)
 				writeFileForListener(listener)
 			}
 			if listener.State == close {
 				for i, l := range currentListeners {
 					if l.Socket == listener.Socket {
-						log.Println("Deregistering Listener")
+						// log.Println("Deregistering Listener")
 						currentListeners = append(currentListeners[:i], currentListeners[i+1:]...)
 					}
 				}
@@ -166,7 +166,7 @@ func cssFunc(css string) http.HandlerFunc {
 
 func pageFunc(w http.ResponseWriter, r *http.Request) {
 	subpath := strings.TrimPrefix(r.RequestURI, "/md")
-	log.Println("New watcher on ", subpath)
+	// log.Println("New watcher on ", subpath)
 	pageTmpl.Execute(w, subpath)
 }
 
@@ -203,5 +203,8 @@ func main() {
 	http.HandleFunc("/github.css", cssFunc(githubCSS))
 	http.Handle("/ws/", websocket.Handler(handleListener(listeners)))
 	openlink.Start(fulladdr)
-	http.ListenAndServe(addr, nil)
+	err = http.ListenAndServe(addr, nil)
+	if err != nil {
+		log.Fatalln(err)
+	}
 }
