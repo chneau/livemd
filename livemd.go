@@ -77,17 +77,17 @@ func addWatch(c chan notify.EventInfo) filepath.WalkFunc {
 		if info.IsDir() {
 			err = notify.Watch(path, c, notify.Write)
 			if err != nil {
-				fmt.Println("err", err)
+				log.Println("err", err)
 				return err
 			}
 		} else if hasMarkdownSuffix(path) {
 			tocMutex.Lock()
 			toc = append(toc, path)
 			tocMutex.Unlock()
-			log.Println("Found", path)
+			// log.Println("Found", path)
 			err = notify.Watch(path, c, notify.Write)
 			if err != nil {
-				fmt.Println("err", err)
+				log.Println("err", err)
 				return err
 			}
 		}
@@ -136,7 +136,7 @@ func updateListeners(updates chan notify.EventInfo, listeners chan listener) {
 		case update := <-updates:
 			for _, l := range currentListeners {
 				if update.Path() == l.File {
-					log.Println("Update on", update.Path())
+					// log.Println("Update on", update.Path())
 					writeFileForListener(l)
 				}
 			}
@@ -150,8 +150,7 @@ func rootFunc(w http.ResponseWriter, r *http.Request) {
 	copy(localToc, toc)
 	tocMutex.Unlock()
 	for i, s := range localToc {
-		chop := strings.TrimPrefix(s, *path)
-		localToc[i] = "* [" + chop + "](/md/" + chop + ")"
+		localToc[i] = "* [" + s + "](/md/" + s + ")"
 	}
 	tocMkd := strings.Join(localToc, "\n")
 	bytes := blackfriday.MarkdownCommon([]byte(tocMkd))
