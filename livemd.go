@@ -120,8 +120,7 @@ func updateListeners(updates chan notify.EventInfo, listeners chan listener) {
 		select {
 		case listener := <-listeners:
 			if listener.State == open {
-				dir, _ := os.Getwd()
-				listener.File = filepath.Join(dir, listener.File)
+				listener.File = filepath.Join(listener.File)
 				log.Println("New listener on", listener.File)
 				currentListeners = append(currentListeners, listener)
 				writeFileForListener(listener)
@@ -152,7 +151,7 @@ func rootFunc(w http.ResponseWriter, r *http.Request) {
 	tocMutex.Unlock()
 	for i, s := range localToc {
 		chop := strings.TrimPrefix(s, *path)
-		localToc[i] = "* [" + chop + "](/md" + chop + ")"
+		localToc[i] = "* [" + chop + "](/md/" + chop + ")"
 	}
 	tocMkd := strings.Join(localToc, "\n")
 	bytes := blackfriday.MarkdownCommon([]byte(tocMkd))
@@ -191,6 +190,8 @@ func main() {
 	updates := make(chan notify.EventInfo)
 	log.Println("Serving on", fulladdr)
 	log.Println("Watching directory", *path)
+	abspath, _ := filepath.Abs(*path)
+	path := &abspath
 	err := filepath.Walk(*path, addWatch(updates))
 	if err != nil {
 		log.Fatal(err)
