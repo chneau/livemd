@@ -1,6 +1,7 @@
 package livemd
 
 import (
+	"fmt"
 	"io/ioutil"
 
 	"github.com/fsnotify/fsnotify"
@@ -11,19 +12,9 @@ import (
 // Manager ...
 type Manager struct {
 	Directory string
-	Files     map[string]string
 	Watcher   *fsnotify.Watcher
 	conns     map[*websocket.Conn]interface{}
 	read      chan interface{}
-}
-
-// AllFiles ...
-func (m *Manager) AllFiles() []string {
-	ff := []string{}
-	for f := range m.Files {
-		ff = append(ff, f)
-	}
-	return ff
 }
 
 func (m *Manager) keepDispatching() {
@@ -40,7 +31,6 @@ func (m *Manager) keepDispatching() {
 // AddConn ...
 func (m *Manager) AddConn(ws *websocket.Conn) {
 	m.conns[ws] = nil
-	ws.WriteJSON(m.Files)
 }
 
 func (m *Manager) watch() {
@@ -57,9 +47,8 @@ func (m *Manager) watch() {
 			if len(b) == 0 {
 				continue
 			}
-			m.Files[event.Name] = byteToHTML(b)
 			m.read <- map[string]string{
-				event.Name: m.Files[event.Name],
+				event.Name: byteToHTML(b),
 			}
 		case err := <-m.Watcher.Errors:
 			if err != nil {
@@ -81,11 +70,7 @@ func (m *Manager) init() {
 		panic(err)
 	}
 	for i := range ff {
-		b, err := ioutil.ReadFile(ff[i])
-		if err != nil {
-			panic(err)
-		}
-		m.Files[ff[i]] = byteToHTML(b)
+		fmt.Println(ff[i])
 	}
 	w, err := Watcher(ff)
 	if err != nil {
@@ -100,7 +85,6 @@ func (m *Manager) init() {
 func NewManager(directory string) *Manager {
 	m := Manager{
 		Directory: directory,
-		Files:     map[string]string{},
 		read:      make(chan interface{}),
 		conns:     map[*websocket.Conn]interface{}{},
 	}

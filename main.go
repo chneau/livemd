@@ -55,10 +55,6 @@ func ce(err error, msg string) {
 func main() {
 	defer tt.Track(time.Now(), "main")
 	m := livemd.NewManager(path)
-	for f := range m.Files {
-		fmt.Println(f)
-	}
-	fmt.Println("# # # # #")
 	fs, _ := fs.New()
 	r := gin.Default()
 	r.Use(gin.Recovery())
@@ -71,6 +67,6 @@ func main() {
 	})
 	r.StaticFS("/livemd", fs)
 	hostname, _ := os.Hostname()
-	fmt.Printf("Listening on http://%[1]s:%[2]s/ , http://localhost:%[2]s/\n# # # # #\n", hostname, port)
+	fmt.Printf("Listening on http://%[1]s:%[2]s/ , http://localhost:%[2]s/\n", hostname, port)
 	r.Run(":" + port)
 }
