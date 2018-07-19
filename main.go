@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -21,6 +22,7 @@ import (
 
 var (
 	port string
+	path string
 )
 
 func init() {
@@ -31,6 +33,8 @@ func init() {
 	gracefulExit()
 	log.SetFlags(log.LstdFlags)
 	flag.StringVar(&port, "port", "8888", "port to listen on")
+	flag.StringVar(&path, "path", ".", "dir to watch (and all subdirs ...)")
+	flag.Parse()
 }
 
 func gracefulExit() {
@@ -50,7 +54,11 @@ func ce(err error, msg string) {
 }
 func main() {
 	defer tt.Track(time.Now(), "main")
-	m := livemd.NewManager(".")
+	m := livemd.NewManager(path)
+	for f := range m.Files {
+		fmt.Println(f)
+	}
+	fmt.Println("# # # # #")
 	fs, _ := fs.New()
 	r := gin.Default()
 	r.Use(gin.Recovery())
@@ -63,6 +71,6 @@ func main() {
 	})
 	r.StaticFS("/livemd", fs)
 	hostname, _ := os.Hostname()
-	log.Printf("Listening on http://%[1]s:%[2]s/ , http://localhost:%[2]s/\n", hostname, port)
+	fmt.Printf("Listening on http://%[1]s:%[2]s/ , http://localhost:%[2]s/\n# # # # #\n", hostname, port)
 	r.Run(":" + port)
 }
