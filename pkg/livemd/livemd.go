@@ -15,11 +15,13 @@ type Manager struct {
 	Watcher   *fsnotify.Watcher
 	conns     map[*websocket.Conn]interface{}
 	read      chan interface{}
+	latest    interface{}
 }
 
 func (m *Manager) keepDispatching() {
 	for {
 		message := <-m.read
+		m.latest = message
 		for c := range m.conns {
 			if c.WriteJSON(message) != nil {
 				delete(m.conns, c)
@@ -31,6 +33,9 @@ func (m *Manager) keepDispatching() {
 // AddConn ...
 func (m *Manager) AddConn(ws *websocket.Conn) {
 	m.conns[ws] = nil
+	if m.latest != nil {
+		ws.WriteJSON(m.latest)
+	}
 }
 
 func (m *Manager) watch() {
@@ -48,7 +53,7 @@ func (m *Manager) watch() {
 				continue
 			}
 			m.read <- map[string]string{
-				event.Name: byteToHTML(b),
+				event.Name: string(github_flavored_markdown.Markdown(b)),
 			}
 		case err := <-m.Watcher.Errors:
 			if err != nil {
@@ -56,12 +61,6 @@ func (m *Manager) watch() {
 			}
 		}
 	}
-}
-
-func byteToHTML(b []byte) string {
-	// p := bluemonday.UGCPolicy()
-	// p.AllowAttrs("class").Matching(regexp.MustCompile("^language-[a-zA-Z0-9]+$")).OnElements("code")
-	return string(github_flavored_markdown.Markdown(b))
 }
 
 func (m *Manager) init() {
