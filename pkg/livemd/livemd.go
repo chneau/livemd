@@ -19,8 +19,8 @@ type Manager struct {
 
 func (m *Manager) keepDispatching() {
 	for {
+		message := <-m.read
 		for c := range m.conns {
-			message := <-m.read
 			if c.WriteJSON(message) != nil {
 				delete(m.conns, c)
 			}
