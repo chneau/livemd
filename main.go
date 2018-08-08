@@ -52,10 +52,12 @@ func ce(err error, msg string) {
 		log.Panicln(msg, err)
 	}
 }
+
 func main() {
 	defer tt.Track(time.Now(), "main")
 	m := livemd.NewManager(path)
 	fs, _ := fs.New()
+	// fs = http.Dir("static")
 	r := gin.Default()
 	r.Use(gin.Recovery())
 	r.GET("/ws", func(c *gin.Context) {
