@@ -20,5 +20,11 @@ clean:
 	rm -rf upload
 
 deps:
-	go get -d -u -v ./...
+	govendor init
+	govendor add +e
+	govendor update +v
+
+dev:
+	go get -u -v github.com/kardianos/govendor
+
 
